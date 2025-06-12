@@ -19,6 +19,9 @@ if "authenticated" not in st.session_state:
 if not st.session_state.authenticated:
     pw = st.text_input("Enter password", type="password")
     if pw and verify_password(pw):
+        # Save query params before rerun
+        for key, val in st.query_params.items():
+            st.session_state[f"query_{key}"] = val
         st.session_state.authenticated = True
         st.rerun()
     elif pw:
@@ -29,7 +32,11 @@ if not st.session_state.authenticated:
 st.title("📄 Format Your Recommendation Letter")
 
 # Get query parameters
-params = st.query_params
+# Restore query params if available
+if "query_text" in st.session_state or "query_paste_id" in st.session_state:
+    params = {k.replace("query_", ""): v for k, v in st.session_state.items() if k.startswith("query_")}
+else:
+    params = st.query_params
 letter_text = unquote(params.get("text", ""))
 addressee = unquote(params.get("addressee", ""))
 salutation = unquote(params.get("salutation", ""))
