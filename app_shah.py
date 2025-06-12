@@ -20,7 +20,7 @@ if not st.session_state.authenticated:
     pw = st.text_input("Enter password", type="password")
     if pw and verify_password(pw):
         st.session_state.authenticated = True
-        st.experimental_rerun()
+        st.rerun()
     elif pw:
         st.error("Incorrect password.")
     st.stop()
