@@ -1,6 +1,6 @@
 streamlit
 python-docx
-openai
+openai==0.28.1
 PyPDF2
 openpyxl
 xlrd
