@@ -7,16 +7,17 @@ import requests
 import io
 import os
 
-# --- Password protection ---
+# -------------------- PASSWORD SECTION --------------------
+
 def verify_password(pw: str) -> bool:
     return hashlib.sha256(pw.encode()).hexdigest() == st.secrets.get("password_hash", "")
 
 if "authenticated" not in st.session_state:
     st.session_state.authenticated = False
 
-# Cache query parameters before rerun
-if "query_params" not in st.session_state:
-    st.session_state.query_params = dict(st.query_params)
+# Save query params only once
+if "saved_query_params" not in st.session_state:
+    st.session_state.saved_query_params = dict(st.query_params)
 
 if not st.session_state.authenticated:
     pw = st.text_input("Enter password", type="password")
@@ -27,35 +28,40 @@ if not st.session_state.authenticated:
         st.error("Incorrect password.")
     st.stop()
 
-# --- Authenticated section ---
-st.title("📄 Format Your Recommendation Letter")
+# -------------------- AFTER AUTHENTICATION --------------------
 
-params = st.session_state.query_params
-letter_text = unquote(params.get("text", ""))
+# Use cached query parameters
+params = st.session_state.saved_query_params
 paste_id = params.get("paste_id", "")
+letter_text = unquote(params.get("text", ""))
 
-# If no direct text provided, try to load from pastebin
+# DEBUG
+st.markdown("**Debug:**")
+st.json(params)
+
+# If text is empty, fetch from pastebin
 if paste_id and not letter_text:
+    paste_url = f"https://pastebin.com/raw/{paste_id}"
     try:
-        paste_url = f"https://pastebin.com/raw/{paste_id}"
-        resp = requests.get(paste_url)
+        resp = requests.get(paste_url, timeout=5)
         if resp.status_code == 200:
             letter_text = resp.text
+            st.success("Loaded letter text from Pastebin.")
         else:
-            st.warning("Failed to load letter text from Pastebin.")
+            st.error(f"Pastebin error: Status code {resp.status_code}")
     except Exception as e:
-        st.error("Error loading letter from Pastebin.")
+        st.error(f"Error fetching from Pastebin: {e}")
+
+# -------------------- TEMPLATE FORMATTING --------------------
 
 addressee = unquote(params.get("addressee", ""))
 salutation = unquote(params.get("salutation", ""))
 letter_date = unquote(params.get("date", date.today().strftime("%B %d, %Y")))
-
 filename = st.text_input("Enter filename (without extension)", value="recommendation_letter")
 
-# Use local template from folder
 template_path = os.path.join(os.path.dirname(__file__), "Shah_LOS_template.docx")
 
-if os.path.exists(template_path) and letter_text and addressee and salutation:
+if letter_text and addressee and salutation and os.path.exists(template_path):
     template = Document(template_path)
 
     def replace(doc, replacements):
