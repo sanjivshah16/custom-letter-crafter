@@ -1,19 +1,20 @@
 import streamlit as st
-import openai
 import hashlib
+import base64
 from datetime import date
 import io
 import os
+from openai import OpenAI
 from docx import Document
 from docx.shared import Pt
 from docx.oxml.ns import qn
 
-# --- Config ---
+# --- Page config ---
 st.set_page_config(page_title="Letter Crafter", layout="wide")
-st.title("🧠 Letter Crafter: Recommendation Letter Generator")
+st.title("📄 Letter Crafter: Recommendation Letter Generator")
 
-# --- Authentication ---
-def verify_password(pw):
+# --- Password protection ---
+def verify_password(pw: str) -> bool:
     return hashlib.sha256(pw.encode()).hexdigest() == st.secrets.get("password_hash", "")
 
 if "authenticated" not in st.session_state:
@@ -28,14 +29,17 @@ if not st.session_state.authenticated:
         st.error("Incorrect password.")
     st.stop()
 
-openai.api_key = st.secrets["openai_api_key"]
+# --- OpenAI client ---
+client = OpenAI(api_key=st.secrets["openai_api_key"])
 
 # --- Inputs ---
-st.subheader("📁 Upload Documents")
-uploaded_files = st.file_uploader("Upload CVs, drafts, reference guidelines, etc.", accept_multiple_files=True)
+st.subheader("📁 Upload Materials")
+uploaded_files = st.file_uploader(
+    "Upload CVs, drafts, personal statements, etc.", accept_multiple_files=True
+)
 
-st.subheader("👥 Relationship Context")
-relationship_text = st.text_area("Describe your relationship with the applicant (1-4 sentences)", height=100)
+st.subheader("👥 Describe Your Relationship")
+relationship_text = st.text_area("How do you know the applicant? (1–4 sentences)", height=120)
 
 addressee = st.text_input("Addressee (e.g., Admissions Committee)", "")
 salutation = st.text_input("Salutation (e.g., Dear Committee)", "")
@@ -43,97 +47,103 @@ if not salutation.strip():
     salutation = "To Whom It May Concern"
 
 letter_date = date.today().strftime("%B %d, %Y")
-filename = st.text_input("Filename for output", value="recommendation_letter")
+filename = st.text_input("Output filename (no extension)", value="recommendation_letter")
 
-if st.button("✍️ Generate Letter"):
-    if not uploaded_files or not relationship_text:
-        st.warning("Please upload at least one file and enter relationship details.")
-        st.stop()
+font_name = st.selectbox("Font", ["Arial", "Times New Roman", "Calibri", "Aptos"], index=0)
+font_size = st.selectbox("Font size", [9, 10, 10.5, 11, 11.5, 12], index=3)
+
+# --- File base64 preview ---
+def prepare_file_context(files):
+    previews = []
+    for f in files:
+        content = f.read()
+        encoded = base64.b64encode(content).decode("utf-8")
+        preview = encoded[:500]  # limit to reduce token usage
+        previews.append(f"{f.name} (base64 preview):\n{preview}...\n")
+    return "\n".join(previews)
+
+# --- Generate letter with GPT-4o ---
+def generate_letter(relationship_text, files):
+    system_prompt = (
+        "You are Letter Crafter, an expert letter writer. You will receive a description of the recommender's "
+        "relationship with the applicant and base64 previews of attached files (e.g., CVs, drafts, etc). "
+        "Use this information to write the body of a polished recommendation letter. "
+        "Do NOT include the date, salutation, or closing. Return only the letter body."
+    )
+
+    file_context = prepare_file_context(files)
+    user_prompt = (
+        f"My relationship to the applicant:\n{relationship_text}\n\n"
+        f"Attached files:\n{file_context}\n\n"
+        f"Please write a professional recommendation letter body only."
+    )
 
     try:
-        # Create OpenAI tool messages
-        system_prompt = (
-            "You are Letter Crafter, a professional recommendation letter writer. "
-            "The user will upload documents including CVs, draft letters, and reference guidelines. "
-            "They also describe their relationship with the applicant. "
-            "Your job is to write the body of a polished recommendation letter. "
-            "DO NOT include the date, opening, or closing in the letter text. Just return the main body."
-        )
-
-        # Build file objects
-        file_objs = []
-        for f in uploaded_files:
-            file_objs.append(("file", (f.name, f, f.type)))
-
-        # Prepare message
-        user_message = {
-            "role": "user",
-            "content": f"My relationship to the applicant: {relationship_text}\n\nPlease generate the letter body."
-        }
-
-        # Use OpenAI API with files
-        response = openai.ChatCompletion.create(
+        response = client.chat.completions.create(
             model="gpt-4o",
             messages=[
                 {"role": "system", "content": system_prompt},
-                user_message
+                {"role": "user", "content": user_prompt}
             ],
-            files=uploaded_files,
             temperature=0.7,
             max_tokens=1000
         )
-
-        letter_text = response["choices"][0]["message"]["content"].strip()
-        st.session_state.letter_text = letter_text
-        st.session_state.salutation = salutation
-        st.session_state.addressee = addressee
-        st.session_state.date = letter_date
-        st.success("✅ Letter generated successfully.")
+        return response.choices[0].message.content.strip()
     except Exception as e:
         st.error(f"Error generating letter: {e}")
+        return None
+
+# --- Run generation ---
+if st.button("✍️ Generate Letter"):
+    if not uploaded_files or not relationship_text.strip():
+        st.warning("Please upload at least one file and describe your relationship.")
         st.stop()
 
-# --- Template ---
-if "letter_text" in st.session_state:
-    template_path = os.path.join(os.path.dirname(__file__), "Shah_LOS_template.docx")
-    if not os.path.exists(template_path):
-        st.error("📁 Template file `Shah_LOS_template.docx` not found.")
-    else:
-        font_name = st.selectbox("Font", ["Arial", "Times New Roman", "Calibri", "Aptos"], index=0)
-        font_size = st.selectbox("Font size", [9, 10, 10.5, 11, 11.5, 12], index=3)
+    letter_body = generate_letter(relationship_text, uploaded_files)
+    if letter_body:
+        st.session_state.letter_text = letter_body
+        st.session_state.addressee = addressee
+        st.session_state.salutation = salutation
+        st.session_state.date = letter_date
+        st.success("✅ Letter body generated.")
 
-        if st.button("📄 Format and Download Letter"):
-            try:
-                doc = Document(template_path)
+# --- Load template and create DOCX ---
+template_path = os.path.join(os.path.dirname(__file__), "Shah_LOS_template.docx")
 
-                def replace_placeholders(doc, replacements):
-                    for paragraph in doc.paragraphs:
-                        for placeholder, replacement in replacements.items():
-                            if placeholder in paragraph.text:
-                                paragraph.text = paragraph.text.replace(placeholder, replacement)
-                                for run in paragraph.runs:
-                                    run.font.name = font_name
-                                    run.font.size = Pt(font_size)
-                                    run._element.rPr.rFonts.set(qn('w:eastAsia'), font_name)
+if "letter_text" in st.session_state and os.path.exists(template_path):
+    try:
+        doc = Document(template_path)
 
-                replacements = {
-                    "<<Date>>": st.session_state.date,
-                    "<<Addressee>>": st.session_state.addressee,
-                    "<<Salutation>>": st.session_state.salutation,
-                    "<<Enter text here>>": st.session_state.letter_text
-                }
+        def replace_placeholders(doc, replacements):
+            for p in doc.paragraphs:
+                for placeholder, replacement in replacements.items():
+                    if placeholder in p.text:
+                        p.text = p.text.replace(placeholder, replacement)
+                        for run in p.runs:
+                            run.font.name = font_name
+                            run.font.size = Pt(font_size)
+                            run._element.rPr.rFonts.set(qn('w:eastAsia'), font_name)
 
-                replace_placeholders(doc, replacements)
+        replacements = {
+            "<<Date>>": st.session_state.date,
+            "<<Addressee>>": st.session_state.addressee,
+            "<<Salutation>>": st.session_state.salutation,
+            "<<Enter text here>>": st.session_state.letter_text
+        }
 
-                buffer = io.BytesIO()
-                doc.save(buffer)
-                buffer.seek(0)
+        replace_placeholders(doc, replacements)
 
-                st.download_button(
-                    label="📥 Download Letter (DOCX)",
-                    data=buffer,
-                    file_name=f"{filename}.docx",
-                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                )
-            except Exception as e:
-                st.error(f"Error formatting letter: {e}")
+        buffer = io.BytesIO()
+        doc.save(buffer)
+        buffer.seek(0)
+
+        st.download_button(
+            label="📥 Download Letter (DOCX)",
+            data=buffer,
+            file_name=f"{filename}.docx",
+            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        )
+    except Exception as e:
+        st.error(f"Error formatting letter: {e}")
+elif not os.path.exists(template_path):
+    st.error("📁 Missing Word template: Shah_LOS_template.docx")
