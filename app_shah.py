@@ -114,25 +114,27 @@ template_path = os.path.join(os.path.dirname(__file__), "Shah_LOS_template.docx"
 def replace_placeholders(doc, replacements):
     to_remove = []
 
-    for p in doc.paragraphs:
+    for idx, p in enumerate(doc.paragraphs):
         for placeholder, replacement in replacements.items():
             if placeholder in p.text:
-                # Clear paragraph and insert clean run
+                # Replace cleanly
                 p.clear()
                 run = p.add_run(replacement)
                 run.font.name = font_name
                 run.font.size = Pt(font_size)
                 run._element.rPr.rFonts.set(qn('w:eastAsia'), font_name)
 
-                # Mark following empty paragraphs for removal (max 4)
-                idx = doc.paragraphs.index(p)
+                # Remove up to 4 following empty paragraphs
                 for i in range(idx + 1, min(idx + 5, len(doc.paragraphs))):
                     if not doc.paragraphs[i].text.strip():
                         to_remove.append(doc.paragraphs[i])
 
     # Delete all marked empty paragraphs
     for p in to_remove:
-        p._element.getparent().remove(p._element)
+        try:
+            p._element.getparent().remove(p._element)
+        except Exception:
+            pass  # ignore if already removed
 
 if "letter_text" in st.session_state and os.path.exists(template_path):
     try:
