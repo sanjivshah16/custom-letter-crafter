@@ -1,0 +1,9 @@
+streamlit
+python-docx
+openai
+PyPDF2
+openpyxl
+xlrd
+pandas
+docx2txt
+PyMuPDF
