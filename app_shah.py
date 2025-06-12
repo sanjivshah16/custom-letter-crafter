@@ -8,6 +8,7 @@ from openai import OpenAI
 from docx import Document
 from docx.shared import Pt
 from docx.oxml.ns import qn
+from docx.oxml import OxmlElement
 
 # --- Page config ---
 st.set_page_config(page_title="Letter Crafter", layout="wide")
@@ -93,7 +94,7 @@ def generate_letter(relationship_text, files):
         st.error(f"Error generating letter: {e}")
         return None
 
-# --- Run generation ---
+# --- Generate button ---
 if st.button("✍️ Generate Letter"):
     if not uploaded_files or not relationship_text.strip():
         st.warning("Please upload at least one file and describe your relationship.")
@@ -107,22 +108,35 @@ if st.button("✍️ Generate Letter"):
         st.session_state.date = letter_date
         st.success("✅ Letter body generated.")
 
-# --- Load template and create DOCX ---
+# --- Template insertion ---
 template_path = os.path.join(os.path.dirname(__file__), "Shah_LOS_template.docx")
+
+def replace_placeholders(doc, replacements):
+    to_remove = []
+
+    for p in doc.paragraphs:
+        for placeholder, replacement in replacements.items():
+            if placeholder in p.text:
+                # Clear paragraph and insert clean run
+                p.clear()
+                run = p.add_run(replacement)
+                run.font.name = font_name
+                run.font.size = Pt(font_size)
+                run._element.rPr.rFonts.set(qn('w:eastAsia'), font_name)
+
+                # Mark following empty paragraphs for removal (max 4)
+                idx = doc.paragraphs.index(p)
+                for i in range(idx + 1, min(idx + 5, len(doc.paragraphs))):
+                    if not doc.paragraphs[i].text.strip():
+                        to_remove.append(doc.paragraphs[i])
+
+    # Delete all marked empty paragraphs
+    for p in to_remove:
+        p._element.getparent().remove(p._element)
 
 if "letter_text" in st.session_state and os.path.exists(template_path):
     try:
         doc = Document(template_path)
-
-        def replace_placeholders(doc, replacements):
-            for p in doc.paragraphs:
-                for placeholder, replacement in replacements.items():
-                    if placeholder in p.text:
-                        p.text = p.text.replace(placeholder, replacement)
-                        for run in p.runs:
-                            run.font.name = font_name
-                            run.font.size = Pt(font_size)
-                            run._element.rPr.rFonts.set(qn('w:eastAsia'), font_name)
 
         replacements = {
             "<<Date>>": st.session_state.date,
