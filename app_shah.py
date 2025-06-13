@@ -117,25 +117,34 @@ def replace_placeholders(doc, replacements):
     for idx, p in enumerate(doc.paragraphs):
         for placeholder, replacement in replacements.items():
             if placeholder in p.text:
-                # Clear and replace
+                # Replace cleanly
                 p.clear()
                 run = p.add_run(replacement)
                 run.font.name = font_name
                 run.font.size = Pt(font_size)
                 run._element.rPr.rFonts.set(qn('w:eastAsia'), font_name)
 
-                # Track the <<Date>> index only
                 if placeholder == "<<Date>>":
                     date_idx = idx
 
-    # Only remove excess empty paragraphs after <<Date>>
+    # Keep ONE blank line after <<Date>>, remove any extras
     if date_idx is not None:
+        # Track all following empty paragraphs
+        empties = []
         i = date_idx + 1
-        while i < len(doc.paragraphs) and doc.paragraphs[i].text.strip() == "":
-            # Stop if we reach the <<Addressee>> or <<Salutation>> block
-            if any(ph in doc.paragraphs[i].text for ph in ["<<Addressee>>", "<<Salutation>>"]):
-                break
-            doc.paragraphs[i]._element.getparent().remove(doc.paragraphs[i]._element)
+        while i < len(doc.paragraphs):
+            para = doc.paragraphs[i]
+            if para.text.strip():
+                break  # Stop at first non-empty
+            empties.append(para)
+            i += 1
+
+        # Remove all but the first empty one
+        for p in empties[1:]:
+            try:
+                p._element.getparent().remove(p._element)
+            except Exception:
+                pass
 
 
 if "letter_text" in st.session_state and os.path.exists(template_path):
