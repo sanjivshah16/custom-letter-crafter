@@ -112,29 +112,31 @@ if st.button("✍️ Generate Letter"):
 template_path = os.path.join(os.path.dirname(__file__), "Shah_LOS_template.docx")
 
 def replace_placeholders(doc, replacements):
-    to_remove = []
+    date_idx = None
 
     for idx, p in enumerate(doc.paragraphs):
         for placeholder, replacement in replacements.items():
             if placeholder in p.text:
-                # Replace cleanly
+                # Clear and replace
                 p.clear()
                 run = p.add_run(replacement)
                 run.font.name = font_name
                 run.font.size = Pt(font_size)
                 run._element.rPr.rFonts.set(qn('w:eastAsia'), font_name)
 
-                # Remove up to 4 following empty paragraphs
-                for i in range(idx + 1, min(idx + 5, len(doc.paragraphs))):
-                    if not doc.paragraphs[i].text.strip():
-                        to_remove.append(doc.paragraphs[i])
+                # Track the <<Date>> index only
+                if placeholder == "<<Date>>":
+                    date_idx = idx
 
-    # Delete all marked empty paragraphs
-    for p in to_remove:
-        try:
-            p._element.getparent().remove(p._element)
-        except Exception:
-            pass  # ignore if already removed
+    # Only remove excess empty paragraphs after <<Date>>
+    if date_idx is not None:
+        i = date_idx + 1
+        while i < len(doc.paragraphs) and doc.paragraphs[i].text.strip() == "":
+            # Stop if we reach the <<Addressee>> or <<Salutation>> block
+            if any(ph in doc.paragraphs[i].text for ph in ["<<Addressee>>", "<<Salutation>>"]):
+                break
+            doc.paragraphs[i]._element.getparent().remove(doc.paragraphs[i]._element)
+
 
 if "letter_text" in st.session_state and os.path.exists(template_path):
     try:
