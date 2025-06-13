@@ -102,7 +102,7 @@ if not salutation.strip():
 letter_date = date.today().strftime("%B %d, %Y")
 filename = st.text_input("Output filename (no extension)", value="recommendation_letter")
 
-font_name = st.selectbox("Font", ["Arial", "Times New Roman", "Calibri", "Aptos"], index=0)
+font_name = st.selectbox("Font", ["Arial", "Times New Roman", "Calibri", "Aptos"], index=3)
 font_size = st.selectbox("Font size", [9, 10, 10.5, 11, 11.5, 12], index=3)
 
 
