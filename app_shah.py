@@ -24,8 +24,8 @@ def notify_usage():
         st.warning(f"(SMS failed: {e})")
 
 # --- Page config ---
-st.set_page_config(page_title="Letter Crafter (Public)", layout="wide")
-st.title("📄 Letter Crafter")
+st.set_page_config(page_title="Custom Letter Crafter", layout="wide")
+st.title("📄 Custom Letter Crafter for Sanjiv Shah, MD")
 
 # --- Password protection ---
 def verify_password(pw: str) -> bool:
